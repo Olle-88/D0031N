@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <title>Registrera studieresultat</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>Välkommen till Registrera studieresultat</h1>
+  <p>Detta är grundversionen av sidan – Flask-servern körs korrekt.</p>
+
+  <button onclick="ping()">Testa backend</button>
+  <p id="resultat"></p>
+
+  <script>
+    async function ping() {
+      const res = await fetch('/ping');
+      const data = await res.json();
+      document.getElementById('resultat').innerText = data.status;
+    }
+  </script>
+</body>
+</html>
+
