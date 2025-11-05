@@ -6,19 +6,178 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <h1>Välkommen till Registrera studieresultat</h1>
-  <p>Detta är grundversionen av sidan – Flask-servern körs korrekt.</p>
+  <h1>Registrera studieresultat</h1>
 
-  <button onclick="ping()">Testa backend</button>
-  <p id="resultat"></p>
+  <!-- Steg 1: Hämta moduler -->
+  <div class="box">
+    <h3>1️⃣ Hämta moduler</h3>
+    <label for="kurskod">Kurskod:</label>
+    <input id="kurskod" placeholder="t.ex. D0031N">
+    <button onclick="hamtaModuler()">Hämta moduler</button>
+    <div id="modulLista"></div>
+  </div>
+
+  <!-- Steg 2: Registrera resultat -->
+  <div class="box">
+    <h3>2️⃣ Registrera resultat</h3>
+    <label for="anvnamn">Användarnamn:</label>
+    <input id="anvnamn" placeholder="t.ex. sveedz-4"><br>
+
+    <label for="modul">Modulkod:</label>
+    <input id="modul" placeholder="t.ex. 0005"><br>
+
+    <label for="datum">Datum:</label>
+    <input id="datum" type="date"><br>
+
+    <label for="betyg">Betyg:</label>
+    <input id="betyg" placeholder="t.ex. A"><br>
+
+    <button onclick="registrera()">Skicka till Ladok</button>
+    <p id="status"></p>
+  </div>
+
+  <!-- Steg 3: Visa registrerade resultat -->
+  <div class="box">
+    <h3>3️⃣ Registrerade resultat</h3>
+    <div class="btn-group">
+      <button onclick="visaResultat()">Uppdatera lista</button>
+      <button onclick="rensaResultat()" class="danger">Rensa alla resultat</button>
+    </div>
+
+    <table id="resultatTabell">
+      <thead>
+        <tr>
+          <th>Personnummer</th>
+          <th>Kurskod</th>
+          <th>Modul</th>
+          <th>Datum</th>
+          <th>Betyg</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 
   <script>
-    async function ping() {
-      const res = await fetch('/ping');
-      const data = await res.json();
-      document.getElementById('resultat').innerText = data.status;
+    // === Hämta moduler ===
+    async function hamtaModuler() {
+      const kurskod = document.getElementById('kurskod').value.trim();
+      if (!kurskod) {
+        alert("⚠️ Ange kurskod först!");
+        return;
+      }
+
+      try {
+        const res = await fetch(`/epok/modul/${kurskod}`);
+        if (!res.ok) throw new Error("Kunde inte hämta moduler");
+        const data = await res.json();
+
+        const modulDiv = document.getElementById('modulLista');
+        if (data.length === 0) {
+          modulDiv.innerHTML = "<p>Inga moduler hittades.</p>";
+          return;
+        }
+
+        let html = "<h4>Moduler:</h4><ul>";
+        data.forEach(m => html += `<li>${m.modulkod} – ${m.namn}</li>`);
+        html += "</ul>";
+        modulDiv.innerHTML = html;
+      } catch (err) {
+        alert("Fel vid hämtning av moduler: " + err.message);
+      }
     }
+
+    // === Registrera resultat ===
+    async function registrera() {
+      const anv = document.getElementById('anvnamn').value.trim();
+      const kurskod = document.getElementById('kurskod').value.trim();
+      const modul = document.getElementById('modul').value.trim();
+      const datum = document.getElementById('datum').value.trim();
+      const betyg = document.getElementById('betyg').value.trim();
+      const statusEl = document.getElementById('status');
+
+      if (!anv || !kurskod || !modul || !datum || !betyg) {
+        statusEl.innerText = "⚠️ Fyll i alla fält innan du registrerar.";
+        return;
+      }
+
+      try {
+        const resp1 = await fetch(`/studentits/personnummer/${anv}`);
+        const student = await resp1.json();
+
+        if (!student.personnummer) {
+          statusEl.innerText = "❌ Studenten hittades inte.";
+          return;
+        }
+
+        const payload = { personnummer: student.personnummer, kurskod, modul, datum, betyg };
+
+        const resp2 = await fetch('/ladok/resultat', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+
+        const resultat = await resp2.json();
+
+        if (!resp2.ok) {
+          statusEl.innerText = "❌ Fel vid registrering: " + (resultat.status || "okänt fel");
+          return;
+        }
+
+        statusEl.innerText = "✅ Status: " + resultat.status;
+        await visaResultat();
+      } catch (err) {
+        statusEl.innerText = "🚨 Kunde inte ansluta till servern.";
+      }
+    }
+
+    // === Visa alla registrerade resultat ===
+    async function visaResultat() {
+      try {
+        const res = await fetch('/ladok/resultat');
+        if (!res.ok) throw new Error("Kunde inte hämta resultat.");
+        const data = await res.json();
+
+        const tbody = document.querySelector("#resultatTabell tbody");
+        tbody.innerHTML = "";
+
+        if (data.length === 0) {
+          tbody.innerHTML = "<tr><td colspan='5'>Inga resultat registrerade ännu.</td></tr>";
+          return;
+        }
+
+        data.forEach(r => {
+          const row = `<tr>
+            <td>${r.personnummer}</td>
+            <td>${r.kurskod}</td>
+            <td>${r.modul}</td>
+            <td>${r.datum}</td>
+            <td>${r.betyg}</td>
+          </tr>`;
+          tbody.innerHTML += row;
+        });
+      } catch (err) {
+        alert("Fel vid hämtning av resultat: " + err.message);
+      }
+    }
+
+    // === Rensa alla resultat ===
+    async function rensaResultat() {
+      if (!confirm("⚠️ Är du säker på att du vill ta bort ALLA resultat?")) return;
+
+      try {
+        const res = await fetch('/ladok/resultat/rensa', { method: 'DELETE' });
+        const data = await res.json();
+        alert(data.status);
+        await visaResultat();
+      } catch (err) {
+        alert("Fel vid rensning av resultat: " + err.message);
+      }
+    }
+
+    // === Ladda listan när sidan öppnas ===
+    window.onload = visaResultat;
   </script>
 </body>
 </html>
-
